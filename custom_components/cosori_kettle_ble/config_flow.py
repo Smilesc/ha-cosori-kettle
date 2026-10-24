@@ -160,9 +160,18 @@ class CosoriKettleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_abort(reason="device_not_found")
 
             # Attempt pairing
+            kettle = CosoriKettle(ble_device, registration_key)
             try:
-                async with CosoriKettle(ble_device, registration_key) as kettle:
-                    await kettle.pair()  # Sends register + hello
+                await kettle._client.connect()
+                await kettle.pair()  # Sends register + hello
+            
+            except DeviceNotInPairingModeError:
+                errors["base"] = "device_not_in_pairing_mode"
+            except Exception as err:
+                _LOGGER.exception("Failed to pair device: %s", err)
+                errors["base"] = "pairing_failed"
+            finally:
+                await kettle.disconnect()
 
                 if self._update_entry:
                     return self.async_update_reload_and_abort(
@@ -179,12 +188,6 @@ class CosoriKettleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_REGISTRATION_KEY: registration_key.hex(),
                     },
                 )
-
-            except DeviceNotInPairingModeError:
-                errors["base"] = "device_not_in_pairing_mode"
-            except Exception as err:
-                _LOGGER.exception("Failed to pair device: %s", err)
-                errors["base"] = "pairing_failed"
 
         return self.async_show_form(
             step_id="pair_device",
